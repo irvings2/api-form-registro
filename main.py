@@ -6,6 +6,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, EmailStr
 from typing import Optional, List
 import json
+from datetime import datetime
+from fastapi import status
 
 app = FastAPI()
 
@@ -45,6 +47,25 @@ class FormularioDatosGeneralesCreate(BaseModel):
     rfc_emp: Optional[str] = None
     institucion: str
     tiempo_desarrollo: str
+    
+class FormularioCreate(BaseModel):
+    user_id: int
+    completado: bool = False
+    
+class FormularioRead(BaseModel):
+    id: int
+    user_id: int
+    folio: str
+    completado: bool
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True  # (Pydantic v2) para mapear desde SQLAlchemy
+        
+def make_folio(id_: int, prefix: str = "DIET", width: int = 5) -> str:
+    year = datetime.utcnow().year
+    return f"{prefix}-{year}-{id_:0{width}d}"
 
 @app.get("/")
 def read_root():
@@ -58,6 +79,29 @@ def get_usuarios(db: Session = Depends(get_db)):
 def get_usuarios(user_id: int, db: Session = Depends(get_db)):
     
     return db.query(Formulario).filter(Formulario.user_id == user_id).first()
+
+@app.post("/formulario/", response_model=FormularioRead, status_code=status.HTTP_201_CREATED)
+def create_formulario(payload: FormularioCreate, db: Session = Depends(get_db)):
+    now = datetime.now()
+
+    # 1) Crear el registro sin folio para obtener el id
+    nuevo = Formulario(
+        user_id=payload.user_id,
+        folio="",                 # temporal
+        completado=payload.completado,
+        created_at=now,
+        updated_at=now,
+    )
+    db.add(nuevo)
+    db.flush()                   # obtiene nuevo.id SIN cerrar la transacción
+
+    # 2) Generar folio con el id ya asignado
+    nuevo.folio = make_folio(nuevo.id)
+
+    # 3) Confirmar
+    db.commit()
+    db.refresh(nuevo)
+    return nuevo
 
 @app.get("/formulario/datos_generales/{formulario_id}")
 def get_usuarios(formulario_id: int, db: Session = Depends(get_db)):
