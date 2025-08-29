@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Depends
 from sqlalchemy.orm import Session
 from database import SessionLocal
-from models import Formulario, FormularioDatosGenerales
+from models import Formulario, FormularioDatosGenerales, FormularioInfoProyecto, FormularioEstadoTec
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, EmailStr
 from typing import Optional, List
@@ -37,16 +37,6 @@ class Integrante(BaseModel):
     direccion: str
     telefono_cel: str
     email: EmailStr
-        
-class FormularioDatosGeneralesCreate(BaseModel):
-    formulario_proyecto_id: int
-    nombre_proyecto: str
-    integrantes: List[Integrante]
-    enlace: Optional[str] = None
-    empresa_constituida: str
-    rfc_emp: Optional[str] = None
-    institucion: str
-    tiempo_desarrollo: str
     
 class FormularioCreate(BaseModel):
     user_id: int
@@ -59,6 +49,51 @@ class FormularioRead(BaseModel):
     completado: bool
     created_at: datetime
     updated_at: datetime
+        
+class FormularioDatosGeneralesCreate(BaseModel):
+    formulario_proyecto_id: int
+    nombre_proyecto: str
+    integrantes: List[Integrante]
+    enlace: Optional[str] = None
+    empresa_constituida: str
+    rfc_emp: Optional[str] = None
+    institucion: str
+    tiempo_desarrollo: str
+
+    class Config:
+        from_attributes = True  # (Pydantic v2) para mapear desde SQLAlchemy
+        
+class FormularioInfoProyectoCreate(BaseModel):
+    formulario_proyecto_id: int
+    resumen: str
+    objetivo: str
+    clasificacion: str
+    nombre_producto: str
+    descripcion: str
+    proyecto_vida: str
+    justificacion_proy_vida: str
+    tipo_producto: str
+    mejora_producto: str
+    apoyo: str
+    asesorias: List[str]
+    asesoria_otro: str
+
+    class Config:
+        from_attributes = True  # (Pydantic v2) para mapear desde SQLAlchemy
+        
+class FormularioEstadoTec_Create(BaseModel):
+    formulario_proyecto_id: int
+    base_tecnologica: str
+    base_tec_descripcion: str
+    grado_avance: str
+    innovacion: str
+    innovacion_justificacion: str
+    intensidad: str
+    tiene_instalaciones: str
+    instalaciones_descripcion: str
+    tiene_equipo: str
+    equipo_actual: str
+    equipo_necesario: str
 
     class Config:
         from_attributes = True  # (Pydantic v2) para mapear desde SQLAlchemy
@@ -72,11 +107,11 @@ def read_root():
     return {"mensaje": "Hola Mundo desde FastAPI 🚀"}
 
 @app.get("/formularios/")
-def get_usuarios(db: Session = Depends(get_db)):
+def get_formularios(db: Session = Depends(get_db)):
     return db.query(Formulario).all()
 
 @app.get("/formulario/{user_id}")
-def get_usuarios(user_id: int, db: Session = Depends(get_db)):
+def get_formulario(user_id: int, db: Session = Depends(get_db)):
     
     return db.query(Formulario).filter(Formulario.user_id == user_id).first()
 
@@ -104,7 +139,7 @@ def create_formulario(payload: FormularioCreate, db: Session = Depends(get_db)):
     return nuevo
 
 @app.get("/formulario/datos_generales/{formulario_id}")
-def get_usuarios(formulario_id: int, db: Session = Depends(get_db)):
+def get_datos_generales(formulario_id: int, db: Session = Depends(get_db)):
     
     dato = db.query(FormularioDatosGenerales).filter(FormularioDatosGenerales.formulario_proyecto_id == formulario_id).first()
     
@@ -123,9 +158,60 @@ def create_datos_generales(payload: FormularioDatosGeneralesCreate, db: Session 
     # Serializar lista de integrantes a string
     data["integrantes"] = json.dumps([i.model_dump() for i in payload.integrantes], ensure_ascii=False)
 
-    nuevo = FormularioDatosGenerales(**data)
+    nuevo = FormularioDatosGenerales(**data,
+        created_at=datetime.now(),
+        updated_at=datetime.now(),
+    )
+    
     db.add(nuevo)
     db.commit()
     db.refresh(nuevo)
     return nuevo
 
+@app.get("/formulario/info_proyecto/{formulario_id}")
+def get_info_proyecto(formulario_id: int, db: Session = Depends(get_db)):
+    
+    dato = db.query(FormularioInfoProyecto).filter(FormularioInfoProyecto.formulario_proyecto_id == formulario_id).first()
+    
+    if dato:
+        try:
+            dato.asesorias = json.loads(dato.integrantes)
+        except Exception:
+            dato.asesorias = []
+    
+    return dato
+
+@app.post("/formulario/info_proyecto/")
+def create_info_proyecto(payload: FormularioInfoProyectoCreate, db: Session = Depends(get_db)):
+    data = payload.model_dump()
+    
+    data["asesorias"] = json.dumps(payload.asesorias, ensure_ascii=False)
+
+    nuevo = FormularioInfoProyecto(**data,
+        created_at=datetime.now(),
+        updated_at=datetime.now(),
+    )
+    
+    db.add(nuevo)
+    db.commit()
+    db.refresh(nuevo)
+    return nuevo
+
+@app.get("/formulario/estado_tec/{formulario_id}")
+def get_estado_tec(formulario_id: int, db: Session = Depends(get_db)):
+    
+    return db.query(FormularioEstadoTec).filter(FormularioEstadoTec.formulario_proyecto_id == formulario_id).first()
+
+@app.post("/formulario/estado_tec/")
+def create_estado_tec(payload: FormularioEstadoTec_Create, db: Session = Depends(get_db)):
+    data = payload.model_dump()
+
+    nuevo = FormularioEstadoTec(**data,
+        created_at=datetime.now(),
+        updated_at=datetime.now(),
+    )
+    
+    db.add(nuevo)
+    db.commit()
+    db.refresh(nuevo)
+    return nuevo
